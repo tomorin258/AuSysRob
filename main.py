@@ -137,25 +137,27 @@ def main():
                     base, shoulder, elbow, wrist, twist = [int(angle) for angle in joint_angles_deg]
                     print(f"计算出的关节角度: Base={base}, Shoulder={shoulder}, Elbow={elbow}, Wrist={wrist}, Twist={twist}")
 
+                    # 1. 夹持器先打开
                     print("Open the gripper...")
-                    robot.move_to_angles(0, 90, 180, 90, 0, gripper_pos=90, move_time=100) # 夹持器打开
-                    time.sleep(2) # 等待机械臂到位
+                    robot.move_to_angles(0, 90, 180, 90, 0, gripper_pos=90, move_time=100)
+                    time.sleep(2)
 
-                    # 移动机械臂到目标位置并抓取 (这里示例夹持器打开，然后关闭抓取)
+                    # 2. 移动到积木位置
                     print("移动机械臂到目标位置...")
-                    robot.move_to_angles(base, shoulder, elbow, wrist, twist, gripper_pos=90, move_time=100) # 夹持器打开
-                    time.sleep(2) # 等待机械臂到位
+                    robot.move_to_angles(base, shoulder, elbow, wrist, twist, gripper_pos=90, move_time=100)
+                    time.sleep(2)
 
+                    # 3. 合拢夹持器抓取
                     print("执行抓取动作...")
-                    robot.move_to_angles(base, shoulder, elbow, wrist, twist, gripper_pos=0, move_time=50) # 夹持器关闭
+                    robot.move_to_angles(base, shoulder, elbow, wrist, twist, gripper_pos=0, move_time=50)
                     time.sleep(2)
 
-                    # 抓取后抬起机械臂 (可以根据需要调整)
+                    # 4. 抓取后抬起elbow
                     print("抓取后抬起...")
-                    robot.move_to_angles(base, shoulder, elbow+10, 90, twist, gripper_pos=0, move_time=100) # 提高腕部，保持夹持器关闭
+                    robot.move_to_angles(base, shoulder, elbow+10, wrist, twist, gripper_pos=0, move_time=100)
                     time.sleep(2)
 
-                    # 移动到安全位置或放置区 (这里示例回到 Home)
+                    # 5. 回home位置，保持夹持器关闭
                     print("移动到 Home 位置...")
                     robot.move_to_home()
                     time.sleep(2)
@@ -186,4 +188,4 @@ def main():
         print("程序结束。")
 
 if __name__ == "__main__":
-    main() 
+    main()
