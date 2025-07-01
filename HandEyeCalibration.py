@@ -166,7 +166,7 @@ class HandEyeCalibrator:
                 # 这里我们假设从 B 到 C 是一个线性变换 (仿射变换的特例: 刚体变换)
                 # 我们可以使用 cv2.estimateAffine3D，它需要至少 4 个点对
                 if len(points_B) >= 4:
-                    retval, out = cv2.estimateAffine3D(points_B_np, points_C_np)
+                    retval, out, inliers = cv2.estimateAffine3D(points_B_np, points_C_np)
                     if retval:
                         # out 是一个 3x4 的仿射矩阵 [R|t]
                         self.transform_matrix = out
@@ -287,17 +287,17 @@ if __name__ == "__main__":
     #    在 PositionCalculate 能够检测到该点时，在弹出的窗口中按 's' 保存，然后输入机械臂末端在基座坐标系C下的实际XYZ坐标。
     #    重复此过程 num_points 次 (建议至少5次，并分布在工作空间中)。
     #    运行这行代码来启动数据收集和标定过程:
-    # calibrator = HandEyeCalibrator(lego_height_mm=20) # 乐高积木的高度，单位毫米
-    # calibrator.collect_and_calibrate(pos_calculator, num_points=5)
+    calibrator = HandEyeCalibrator(lego_height_mm=20) # 乐高积木的高度，单位毫米
+    calibrator.collect_and_calibrate(pos_calculator, num_points=4)
 
     # 2. **获取方块坐标 (日常使用)**：完成手眼标定并生成 'hand_eye_calibration.pkl' 文件后，
     #    您可以多次运行此方法来实时检测并计算乐高积木在机械臂基座坐标系C下的三维坐标。
-    calibrator = HandEyeCalibrator(lego_height_mm=20) # 请确保这里的乐高积木高度与您的实际测量值一致
-    final_block_coords = calibrator.get_block_coordinate_in_robot_base(pos_calculator)
+    # calibrator = HandEyeCalibrator(lego_height_mm=20) # 请确保这里的乐高积木高度与您的实际测量值一致
+    # final_block_coords = calibrator.get_block_coordinate_in_robot_base(pos_calculator)
 
-    if final_block_coords:
-        print(f"\n最终检测到的乐高积木坐标 (机械臂基座坐标系C): {final_block_coords[0]:.2f}, {final_block_coords[1]:.2f}, {final_block_coords[2]:.2f} mm")
-    else:
-        print("未能获取乐高积木坐标。")
+    # if final_block_coords:
+    #     print(f"\n最终检测到的乐高积木坐标 (机械臂基座坐标系C): {final_block_coords[0]:.2f}, {final_block_coords[1]:.2f}, {final_block_coords[2]:.2f} mm")
+    # else:
+    #     print("未能获取乐高积木坐标。")
 
     print("\n程序结束。") 

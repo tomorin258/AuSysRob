@@ -288,16 +288,16 @@ if __name__ == "__main__":
     # --- 校准步骤说明 ---
     # 1. **相机内参标定**：只运行一次。需要您准备棋盘格，并在摄像头前从不同角度展示，捕获足够数量的图片。
     #    运行这行代码来启动标定过程:
-    # calculator.calibrate_camera(checkerboard_size=(9, 6), square_size_mm=25, num_images=15)
+    # calculator.calibrate_camera(checkerboard_size=(9, 6), square_size_mm=30, num_images=15)
 
     # 2. **平面校准（计算单应性矩阵）**：在相机内参标定完成后只运行一次。
     #    将棋盘格平放于您希望机械臂抓取物体的工作平面上。
     #    运行这行代码来启动校准过程:
-    # calculator.calculate_plane_homography(checkerboard_size=(9, 6), square_size_mm=25)
+    calculator.calculate_plane_homography(checkerboard_size=(9, 6), square_size_mm=30)
 
     # 3. **目标检测与坐标计算**：完成上述两个校准步骤并生成 'camera_calibration.pkl' 和 'homography_matrix.pkl' 文件后，
     #    您可以多次运行此方法来实时检测并计算物体在工作平面上的物理坐标。
-    calculator.detect_and_calculate_position()
+    # calculator.detect_and_calculate_position()
 
     print("\n程序结束。") 
 

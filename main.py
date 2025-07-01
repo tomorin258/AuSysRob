@@ -47,53 +47,53 @@ def main():
         homography_file=HOMOGRAPHY_MATRIX_FILE
     )
 
-    # 1.1 相机内参标定
-    if not (position_calculator.camera_matrix is not None and position_calculator.dist_coeffs is not None):
-        print_step_header("1.1", "相机内参标定 (A -> B 的部分映射)")
-        print("请准备棋盘格，并按照程序提示进行相机内参标定。")
-        input("按 Enter 键开始相机内参标定...")
-        position_calculator.calibrate_camera(
-            checkerboard_size=CHECKERBOARD_SIZE,
-            square_size_mm=SQUARE_SIZE_MM,
-            num_images=NUM_CALIBRATION_IMAGES
-        )
-        if not (position_calculator.camera_matrix is not None and position_calculator.dist_coeffs is not None):
-            print("错误: 相机内参标定失败或用户中断。请解决问题后重新运行程序。")
-            return
+    # # 1.1 相机内参标定
+    # if not (position_calculator.camera_matrix is not None and position_calculator.dist_coeffs is not None):
+    #     print_step_header("1.1", "相机内参标定 (A -> B 的部分映射)")
+    #     print("请准备棋盘格，并按照程序提示进行相机内参标定。")
+    #     input("按 Enter 键开始相机内参标定...")
+    #     position_calculator.calibrate_camera(
+    #         checkerboard_size=CHECKERBOARD_SIZE,
+    #         square_size_mm=SQUARE_SIZE_MM,
+    #         num_images=NUM_CALIBRATION_IMAGES
+    #     )
+    #     if not (position_calculator.camera_matrix is not None and position_calculator.dist_coeffs is not None):
+    #         print("错误: 相机内参标定失败或用户中断。请解决问题后重新运行程序。")
+    #         return
 
-    # 1.2 平面校准 (单应性矩阵计算)
-    if position_calculator.homography_matrix is None:
-        print_step_header("1.2", "平面校准 (A -> B 的单应性矩阵计算)")
-        print("请将棋盘格平放于工作平面上，并按照程序提示进行平面校准。")
-        input("按 Enter 键开始平面校准...")
-        position_calculator.calculate_plane_homography(
-            checkerboard_size=CHECKERBOARD_SIZE,
-            square_size_mm=SQUARE_SIZE_MM
-        )
-        if position_calculator.homography_matrix is None:
-            print("错误: 平面校准失败或用户中断。请解决问题后重新运行程序。")
-            return
+    # # 1.2 平面校准 (单应性矩阵计算)
+    # if position_calculator.homography_matrix is None:
+    #     print_step_header("1.2", "平面校准 (A -> B 的单应性矩阵计算)")
+    #     print("请将棋盘格平放于工作平面上，并按照程序提示进行平面校准。")
+    #     input("按 Enter 键开始平面校准...")
+    #     position_calculator.calculate_plane_homography(
+    #         checkerboard_size=CHECKERBOARD_SIZE,
+    #         square_size_mm=SQUARE_SIZE_MM
+    #     )
+    #     if position_calculator.homography_matrix is None:
+    #         print("错误: 平面校准失败或用户中断。请解决问题后重新运行程序。")
+    #         return
 
-    # 2. 初始化 HandEyeCalibrator (手眼标定)
-    print_step_header(2, "初始化手眼标定模块")
-    hand_eye_calibrator = HandEyeCalibrator(
-        calibration_file=HAND_EYE_CALIBRATION_FILE,
-        lego_height_mm=LEGO_HEIGHT_MM
-    )
+    # # 2. 初始化 HandEyeCalibrator (手眼标定)
+    # print_step_header(2, "初始化手眼标定模块")
+    # hand_eye_calibrator = HandEyeCalibrator(
+    #     calibration_file=HAND_EYE_CALIBRATION_FILE,
+    #     lego_height_mm=LEGO_HEIGHT_MM
+    # )
 
-    # 2.1 手眼标定 (B -> C 的映射)
-    if hand_eye_calibrator.transform_matrix is None:
-        print_step_header("2.1", "手眼标定 (B -> C 的转换矩阵计算)")
-        print("此步骤需要您手动移动机械臂并输入其基座坐标系下的位置。")
-        print(f"您需要收集 {NUM_HAND_EYE_POINTS} 组点对。")
-        input("按 Enter 键开始手眼标定数据收集...")
-        hand_eye_calibrator.collect_and_calibrate(
-            position_calculator=position_calculator,
-            num_points=NUM_HAND_EYE_POINTS
-        )
-        if hand_eye_calibrator.transform_matrix is None:
-            print("错误: 手眼标定失败或用户中断。请解决问题后重新运行程序。")
-            return
+    # # 2.1 手眼标定 (B -> C 的映射)
+    # if hand_eye_calibrator.transform_matrix is None:
+    #     print_step_header("2.1", "手眼标定 (B -> C 的转换矩阵计算)")
+    #     print("此步骤需要您手动移动机械臂并输入其基座坐标系下的位置。")
+    #     print(f"您需要收集 {NUM_HAND_EYE_POINTS} 组点对。")
+    #     input("按 Enter 键开始手眼标定数据收集...")
+    #     hand_eye_calibrator.collect_and_calibrate(
+    #         position_calculator=position_calculator,
+    #         num_points=NUM_HAND_EYE_POINTS
+    #     )
+    #     if hand_eye_calibrator.transform_matrix is None:
+    #         print("错误: 手眼标定失败或用户中断。请解决问题后重新运行程序。")
+    #         return
 
     # 3. 初始化 BraccioInverseKinematics (逆向运动学)
     print_step_header(3, "初始化逆向运动学模块")
