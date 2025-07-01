@@ -74,17 +74,19 @@ class HandEyeCalibrator:
 
                 for r in results:
                     boxes = r.boxes
-                    if len(boxes) > 0:
-                        # 只取第一个检测到的物体，实际应用中可能需要更复杂的逻辑来选择目标
-                        box = boxes[0]
+                    for box in boxes:
+                        conf = box.conf[0].cpu().numpy()
+                        cls = int(box.cls[0].cpu().numpy())
+                        print(f"[HandEyeCalibration] 检测到类别: {cls}，置信度: {conf:.2f}")
+                        if cls != 9 or conf < 0.15:
+                            continue
+                        # 以下为原有处理逻辑
                         x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
                         center_x_pixel = (x1 + x2) / 2
                         center_y_pixel = (y1 + y2) / 2
-
                         pixel_coords = np.array([[[center_x_pixel, center_y_pixel]]], dtype=np.float32)
                         world_coords_2d = cv2.perspectiveTransform(pixel_coords, position_calculator.homography_matrix)[0][0]
                         current_world_B_coords = (world_coords_2d[0], world_coords_2d[1])
-
                         label = f"Detected: ({current_world_B_coords[0]:.1f}mm, {current_world_B_coords[1]:.1f}mm)"
                         cv2.rectangle(undistorted_frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
                         cv2.putText(undistorted_frame, label, (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
@@ -215,7 +217,8 @@ class HandEyeCalibrator:
             print(f"错误: 无法打开摄像头 {position_calculator.camera_id}。")
             return None
 
-        print("\n=== 开始实时获取方块坐标 (机械臂基座坐标系C) ===\n按 'q' 退出。")
+        print("\n=== 实时获取方块坐标 (机械臂基座坐标系C) ===\n检测到积木后自动返回。")
+        robot_base_coords = None
         while True:
             ret, frame = cap.read()
             if not ret:
@@ -229,52 +232,44 @@ class HandEyeCalibrator:
 
             # 2. YOLO 目标检测
             results = position_calculator.model(undistorted_frame, verbose=False)
-            robot_base_coords = None
 
             for r in results:
                 boxes = r.boxes
-                if len(boxes) > 0:
-                    box = boxes[0] # 假设只关注第一个检测到的物体
+                for box in boxes:
+                    conf = box.conf[0].cpu().numpy()
+                    cls = int(box.cls[0].cpu().numpy())
+                    print(f"[HandEyeCalibration] 检测到类别: {cls}，置信度: {conf:.2f}")
+                    if cls != 9 or conf < 0.15:
+                        continue
+                    # 以下为原有处理逻辑
                     x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
                     center_x_pixel = (x1 + x2) / 2
                     center_y_pixel = (y1 + y2) / 2
-
-                    # 将像素坐标转换为世界坐标系B下的物理坐标 (X, Y in mm)
                     pixel_coords = np.array([[[center_x_pixel, center_y_pixel]]], dtype=np.float32)
                     world_coords_2d_B = cv2.perspectiveTransform(pixel_coords, position_calculator.homography_matrix)[0][0]
-
-                    # 将坐标系B的2D点扩展为3D点 (x_B, y_B, 0)，然后应用变换
-                    # 注意：这里的 Z=0 是针对 B 坐标系平面而言的，实际的 Z 轴高度由手眼标定和固定高度决定
-                    point_B_3d = np.array([world_coords_2d_B[0], world_coords_2d_B[1], 0, 1], dtype=np.float32) # 添加齐次坐标1
-
-                    # 应用手眼转换矩阵 (B->C)
-                    # transform_matrix 是 3x4 的矩阵 [R|t]
-                    # 所以 point_B_3d 需要是 4x1 的向量 (x, y, z, 1).T
+                    point_B_3d = np.array([world_coords_2d_B[0], world_coords_2d_B[1], 0, 1], dtype=np.float32)
                     transformed_point_C = np.dot(self.transform_matrix, point_B_3d)
-
-                    # 得到的 transformed_point_C 是 (x_C, y_C, z_C)
-                    # 现在我们替换 Z_C 为固定的乐高积木高度
                     robot_base_x = transformed_point_C[0]
                     robot_base_y = transformed_point_C[1]
-                    robot_base_z = self.lego_height_mm # 使用固定的乐高积木高度
-
+                    robot_base_z = self.lego_height_mm
                     robot_base_coords = (robot_base_x, robot_base_y, robot_base_z)
-
-                    # 绘制检测框和世界坐标
                     label = f"Robot Coords: ({robot_base_x:.1f}, {robot_base_y:.1f}, {robot_base_z:.1f}) mm"
                     cv2.rectangle(undistorted_frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
                     cv2.putText(undistorted_frame, label, (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
                     print(f"检测到物体中心点 (机械臂基座坐标系C): ({robot_base_x:.1f}, {robot_base_y:.1f}, {robot_base_z:.1f}) mm")
+                    cv2.imshow('实时方块坐标 (机械臂基座坐标系C)', undistorted_frame)
+                    cv2.waitKey(500)
+                    cap.release()
+                    cv2.destroyAllWindows()
+                    return robot_base_coords
 
             cv2.imshow('实时方块坐标 (机械臂基座坐标系C)', undistorted_frame)
-
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
         cap.release()
         cv2.destroyAllWindows()
-        return robot_base_coords
+        return None
 
 if __name__ == "__main__":
     # 确保 PositionCalculator 已经正确初始化并完成了相机内参标定和平面校准

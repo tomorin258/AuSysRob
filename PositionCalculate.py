@@ -249,29 +249,21 @@ class PositionCalculator:
             for r in results:
                 boxes = r.boxes
                 for box in boxes:
+                    conf = box.conf[0].cpu().numpy()
+                    cls = int(box.cls[0].cpu().numpy())
+                    print(f"[PositionCalculate] 检测到类别: {cls}，置信度: {conf:.2f}")
+                    if cls != 9 or conf < 0.25:
+                        continue
                     x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                    # conf = box.conf[0].cpu().numpy()
-                    # cls = int(box.cls[0].cpu().numpy())
-
-                    # 计算检测框的中心点像素坐标
                     center_x_pixel = (x1 + x2) / 2
                     center_y_pixel = (y1 + y2) / 2
-
-                    # 将像素坐标转换为 NumPy 数组，以便进行单应性变换
-                    # cv2.perspectiveTransform 期望输入为三维数组: [[[x,y]]]
                     pixel_coords = np.array([[[center_x_pixel, center_y_pixel]]], dtype=np.float32)
-
-                    # 应用单应性变换，将像素坐标转换为世界坐标系B下的物理坐标 (X, Y in mm)
                     world_coords_2d = cv2.perspectiveTransform(pixel_coords, self.homography_matrix)[0][0]
-
                     world_x_mm = world_coords_2d[0]
                     world_y_mm = world_coords_2d[1]
-
-                    # 绘制检测框和世界坐标
                     label = f"Obj: ({world_x_mm:.1f}mm, {world_y_mm:.1f}mm)"
                     cv2.rectangle(undistorted_frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
                     cv2.putText(undistorted_frame, label, (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
                     print(f"检测到物体中心点 (像素): ({center_x_pixel:.1f}, {center_y_pixel:.1f}) -> 世界坐标系B (mm): ({world_x_mm:.1f}, {world_y_mm:.1f})")
 
             cv2.imshow('物体检测与位置计算', undistorted_frame)

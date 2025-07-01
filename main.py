@@ -74,12 +74,12 @@ def main():
     #         print("错误: 平面校准失败或用户中断。请解决问题后重新运行程序。")
     #         return
 
-    # # 2. 初始化 HandEyeCalibrator (手眼标定)
-    # print_step_header(2, "初始化手眼标定模块")
-    # hand_eye_calibrator = HandEyeCalibrator(
-    #     calibration_file=HAND_EYE_CALIBRATION_FILE,
-    #     lego_height_mm=LEGO_HEIGHT_MM
-    # )
+    # 2. 初始化 HandEyeCalibrator (手眼标定)
+    print_step_header(2, "初始化手眼标定模块")
+    hand_eye_calibrator = HandEyeCalibrator(
+        calibration_file=HAND_EYE_CALIBRATION_FILE,
+        lego_height_mm=LEGO_HEIGHT_MM
+    )
 
     # # 2.1 手眼标定 (B -> C 的映射)
     # if hand_eye_calibrator.transform_matrix is None:
