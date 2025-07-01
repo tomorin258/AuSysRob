@@ -16,7 +16,7 @@ YOLO_MODEL_PATH = "yolo11n.pt"  # YOLO模型文件路径
 CAMERA_CALIBRATION_FILE = "camera_calibration.pkl"  # 相机内参标定数据保存文件
 HOMOGRAPHY_MATRIX_FILE = "homography_matrix.pkl"  # 单应性矩阵数据保存文件
 HAND_EYE_CALIBRATION_FILE = "hand_eye_calibration.pkl"  # 手眼标定数据保存文件
-BRACCIO_COM_PORT = 'COM6'  # 机械臂串口号，根据您的系统进行修改 (例如 '/dev/ttyUSB0' 或 'COMx')
+BRACCIO_COM_PORT = 'COM8'  # 机械臂串口号，根据您的系统进行修改 (例如 '/dev/ttyUSB0' 或 'COMx')
 BRACCIO_BAUD_RATE = 115200
 BRACCIO_TIMEOUT = 5
 
@@ -137,6 +137,10 @@ def main():
                     base, shoulder, elbow, wrist, twist = [int(angle) for angle in joint_angles_deg]
                     print(f"计算出的关节角度: Base={base}, Shoulder={shoulder}, Elbow={elbow}, Wrist={wrist}, Twist={twist}")
 
+                    print("Open the gripper...")
+                    robot.move_to_angles(0, 90, 180, 90, 0, gripper_pos=90, move_time=100) # 夹持器打开
+                    time.sleep(2) # 等待机械臂到位
+
                     # 移动机械臂到目标位置并抓取 (这里示例夹持器打开，然后关闭抓取)
                     print("移动机械臂到目标位置...")
                     robot.move_to_angles(base, shoulder, elbow, wrist, twist, gripper_pos=90, move_time=100) # 夹持器打开
@@ -148,7 +152,7 @@ def main():
 
                     # 抓取后抬起机械臂 (可以根据需要调整)
                     print("抓取后抬起...")
-                    robot.move_to_angles(base, shoulder, elbow, 160, twist, gripper_pos=0, move_time=100) # 提高腕部，保持夹持器关闭
+                    robot.move_to_angles(base, shoulder, elbow+10, 90, twist, gripper_pos=0, move_time=100) # 提高腕部，保持夹持器关闭
                     time.sleep(2)
 
                     # 移动到安全位置或放置区 (这里示例回到 Home)

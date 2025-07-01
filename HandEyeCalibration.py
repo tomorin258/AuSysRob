@@ -68,28 +68,38 @@ class HandEyeCalibrator:
                 new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(position_calculator.camera_matrix, position_calculator.dist_coeffs, (w, h), 1, (w, h))
                 undistorted_frame = cv2.undistort(frame, position_calculator.camera_matrix, position_calculator.dist_coeffs, None, new_camera_matrix)
 
-                # YOLO 目标检测
-                results = position_calculator.model(undistorted_frame, verbose=False)
+                # 红色色块检测（替换YOLO部分）
+                hsv = cv2.cvtColor(undistorted_frame, cv2.COLOR_BGR2HSV)
+                # 红色有两个区间
+                lower_red1 = np.array([0, 100, 100])
+                upper_red1 = np.array([10, 255, 255])
+                lower_red2 = np.array([160, 100, 100])
+                upper_red2 = np.array([179, 255, 255])
+                mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
+                mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+                mask = cv2.bitwise_or(mask1, mask2)
+                # 形态学操作去噪
+                kernel = np.ones((5, 5), np.uint8)
+                mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+                mask = cv2.morphologyEx(mask, cv2.MORPH_DILATE, kernel)
+                # 找轮廓
+                contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 current_world_B_coords = None
-
-                for r in results:
-                    boxes = r.boxes
-                    for box in boxes:
-                        conf = box.conf[0].cpu().numpy()
-                        cls = int(box.cls[0].cpu().numpy())
-                        print(f"[HandEyeCalibration] 检测到类别: {cls}，置信度: {conf:.2f}")
-                        if cls != 9 or conf < 0.15:
-                            continue
-                        # 以下为原有处理逻辑
-                        x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                        center_x_pixel = (x1 + x2) / 2
-                        center_y_pixel = (y1 + y2) / 2
-                        pixel_coords = np.array([[[center_x_pixel, center_y_pixel]]], dtype=np.float32)
-                        world_coords_2d = cv2.perspectiveTransform(pixel_coords, position_calculator.homography_matrix)[0][0]
-                        current_world_B_coords = (world_coords_2d[0], world_coords_2d[1])
-                        label = f"Detected: ({current_world_B_coords[0]:.1f}mm, {current_world_B_coords[1]:.1f}mm)"
-                        cv2.rectangle(undistorted_frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-                        cv2.putText(undistorted_frame, label, (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                if contours:
+                    # 取最大轮廓
+                    largest_contour = max(contours, key=cv2.contourArea)
+                    if cv2.contourArea(largest_contour) > 100:  # 面积阈值可调整
+                        M = cv2.moments(largest_contour)
+                        if M["m00"] != 0:
+                            cX = int(M["m10"] / M["m00"])
+                            cY = int(M["m01"] / M["m00"])
+                            pixel_coords = np.array([[[cX, cY]]], dtype=np.float32)
+                            world_coords_2d = cv2.perspectiveTransform(pixel_coords, position_calculator.homography_matrix)[0][0]
+                            current_world_B_coords = (world_coords_2d[0], world_coords_2d[1])
+                            label = f"Red: ({current_world_B_coords[0]:.1f}mm, {current_world_B_coords[1]:.1f}mm)"
+                            cv2.drawContours(undistorted_frame, [largest_contour], -1, (0, 255, 0), 2)
+                            cv2.circle(undistorted_frame, (cX, cY), 5, (0, 255, 255), -1)
+                            cv2.putText(undistorted_frame, label, (cX, cY - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
                 cv2.putText(undistorted_frame, "Press 's' to Save Point, 'q' to Quit", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
                 cv2.imshow('手眼标定数据收集', undistorted_frame)
@@ -295,4 +305,4 @@ if __name__ == "__main__":
     # else:
     #     print("未能获取乐高积木坐标。")
 
-    print("\n程序结束。") 
+    print("\n程序结束。")
