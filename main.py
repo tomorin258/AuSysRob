@@ -16,7 +16,7 @@ YOLO_MODEL_PATH = "yolo11n.pt"  # YOLO模型文件路径
 CAMERA_CALIBRATION_FILE = "camera_calibration.pkl"  # 相机内参标定数据保存文件
 HOMOGRAPHY_MATRIX_FILE = "homography_matrix.pkl"  # 单应性矩阵数据保存文件
 HAND_EYE_CALIBRATION_FILE = "hand_eye_calibration.pkl"  # 手眼标定数据保存文件
-BRACCIO_COM_PORT = 'COM6'  # 机械臂串口号，根据您的系统进行修改 (例如 '/dev/ttyUSB0' 或 'COMx')
+BRACCIO_COM_PORT = 'COM8'  # 机械臂串口号，根据您的系统进行修改 (例如 '/dev/ttyUSB0' 或 'COMx')
 BRACCIO_BAUD_RATE = 115200
 BRACCIO_TIMEOUT = 5
 
