@@ -33,6 +33,7 @@ class CameraCalibration:
         self.camera_matrix = None
         self.distortion_coeffs = None
         self.calibration_error = None
+        self.camera_matrix_loaded = False # 新增属性，指示相机矩阵是否已加载
         
         # 创建保存目录
         self.save_dir = "calibration_data"
@@ -174,6 +175,7 @@ class CameraCalibration:
             self.camera_matrix = camera_matrix
             self.distortion_coeffs = dist_coeffs
             self.calibration_error = ret
+            self.camera_matrix_loaded = True # 标定成功，设置为True
             
             print("相机标定成功!")
             print(f"重投影误差: {ret:.4f} 像素")
@@ -234,27 +236,27 @@ class CameraCalibration:
     
     def load_calibration_results(self, calibration_file):
         """
-        从文件加载标定结果
+        加载相机标定结果
         
         参数:
-            calibration_file (str): 标定文件路径 (.json 或 .npz)
+            calibration_file (str): 标定结果文件的路径
         """
-        if calibration_file.endswith('.json'):
-            with open(calibration_file, 'r', encoding='utf-8') as f:
+        if not os.path.exists(calibration_file):
+            raise FileNotFoundError(f"标定文件未找到: {calibration_file}")
+
+        try:
+            with open(calibration_file, 'r') as f:
                 data = json.load(f)
-            self.camera_matrix = np.array(data['camera_matrix'])
-            self.distortion_coeffs = np.array(data['distortion_coefficients'])
-            self.calibration_error = data['calibration_error']
-        elif calibration_file.endswith('.npz'):
-            data = np.load(calibration_file)
-            self.camera_matrix = data['camera_matrix']
-            self.distortion_coeffs = data['distortion_coeffs']
-            self.calibration_error = float(data['calibration_error'])
-        else:
-            raise ValueError("不支持的文件格式，请使用 .json 或 .npz 文件")
-        
-        print(f"已加载标定结果: {calibration_file}")
-        print(f"重投影误差: {self.calibration_error:.4f}")
+                self.camera_matrix = np.array(data['camera_matrix'])
+                self.distortion_coeffs = np.array(data['distortion_coeffs']).reshape(-1, 1)
+                self.calibration_error = data['reprojection_error']
+                self.camera_matrix_loaded = True # 加载成功，设置为True
+                print(f"成功加载相机标定参数: {calibration_file}")
+                return True
+        except Exception as e:
+            print(f"加载相机标定结果时发生错误: {e}")
+            self.camera_matrix_loaded = False # 加载失败，设置为False
+            return False
     
     def undistort_image(self, image):
         """
