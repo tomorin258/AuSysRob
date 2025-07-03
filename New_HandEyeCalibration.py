@@ -24,7 +24,7 @@ class HandEyeCalibration:
     用于将世界坐标系B转换到机械臂基座坐标系C
     """
     
-    def __init__(self, camera_index=0, com_port='COM6', cam_calib_instance=None):
+    def __init__(self, camera_index=0, com_port='COM8', cam_calib_instance=None):
         """
         初始化手眼标定
         
@@ -170,14 +170,14 @@ class HandEyeCalibration:
         
         # 你的8组预设点
         calibration_positions = [
-            [70, 90, 180, 90, 0, 50, 50],
-            [75, 90, 180, 90, 0, 50, 50],
-            [80, 90, 180, 90, 0, 50, 50],
-            [85, 90, 180, 90, 0, 50, 50],
-            [90, 90, 180, 90, 0, 50, 50],
             [95, 90, 180, 90, 0, 50, 50],
-            [100, 90, 180, 90, 0, 50, 50],
-            [110, 90, 180, 90, 0, 50, 50],
+            [60, 93, 183, 92, 0, 50, 50],
+            [70, 96, 186, 94, 0, 50, 50],
+            [80, 99, 189, 96, 0, 50, 50],
+            [90, 87, 177, 88, 0, 50, 50],
+            [100, 84, 174, 86, 0, 50, 50],
+            [110, 81, 171, 84, 0, 50, 50],
+            [120, 78, 168, 82, 0, 50, 50],
         ]
         
         cap = cv2.VideoCapture(self.camera_index)
@@ -281,20 +281,49 @@ class HandEyeCalibration:
                 print("错误: 输入点集维度不正确，应为 N x 3。")
                 return False
 
-            # 使用 estimateAffine3D 计算仿射变换矩阵
-            # 它找到一个 3x4 的矩阵 [R|t]，使得 src_points * [R^T; t^T] = dst_points
-            # 或者 dst_points = src_points * R + t (当 R 为 3x3，t 为 1x3 时)
-            # cv2.estimateAffine3D(src, dst) 返回一个 3x4 的仿射变换矩阵 `out`，形式为 [R|t]
-            # 其中 R 是 3x3 旋转矩阵，t 是 3x1 平移向量
-            retval, self.hand_eye_matrix, inliers = cv2.estimateAffine3D(camera_points_B, robot_points_C)
+            # 调试信息：打印完整的数组内容
+            print(f"DEBUG: Full robot_points_C:\n{robot_points_C}")
+            print(f"DEBUG: Full camera_points_B:\n{camera_points_B}")
+
+            # 构建用于 camera_points_B 的增广矩阵，添加齐次坐标1
+            camera_points_B_aug = np.hstack((camera_points_B, np.ones((camera_points_B.shape[0], 1)))) # N x 4
+            print(f"DEBUG: camera_points_B_aug shape: {camera_points_B_aug.shape}")
+            print(f"DEBUG: Full camera_points_B_aug:\n{camera_points_B_aug}")
+
+            # 打印增广矩阵的秩，检查是否有奇异性
+            try:
+                rank_A = np.linalg.matrix_rank(camera_points_B_aug)
+                print(f"DEBUG: Rank of camera_points_B_aug: {rank_A}")
+                if rank_A < 4:
+                    print("警告: camera_points_B_aug 矩阵的秩小于 4，可能存在共面或共线问题，导致解不稳定或不唯一。")
+            except Exception as rank_e:
+                print(f"DEBUG: 无法计算 camera_points_B_aug 的秩: {rank_e}")
+
+            # 使用最小二乘法求解变换矩阵
+            # 我们希望求解 camera_points_B_aug @ M_transpose = robot_points_C
+            # 其中 M_transpose 是 4x3 矩阵，M 是 3x4 矩阵
+            M_transpose, residuals, rank, s = np.linalg.lstsq(camera_points_B_aug, robot_points_C, rcond=None)
             
-            if retval:
+            print(f"DEBUG: M_transpose shape: {M_transpose.shape}")
+            print(f"DEBUG: M_transpose:\n{M_transpose}")
+            print(f"DEBUG: residuals: {residuals}")
+            print(f"DEBUG: rank from lstsq: {rank}")
+            print(f"DEBUG: s (singular values): {s}")
+
+            self.hand_eye_matrix = M_transpose.T # M 是 3x4 矩阵
+            
+            # 检查残差以判断拟合质量，但目前只关注是否能计算出矩阵
+            # residuals 可能为空数组，如果方程是精确解，或者 rank == M_transpose.shape[0]
+            if self.hand_eye_matrix is not None and self.hand_eye_matrix.shape == (3, 4) and not np.isnan(self.hand_eye_matrix).any():
                 print("\n手眼标定完成！世界坐标系B到机械臂基座坐标系C的转换矩阵为 (3x4 仿射矩阵):")
                 print(self.hand_eye_matrix)
                 self.save_calibration_results()
                 return True
             else:
                 print("错误: 无法计算手眼标定仿射变换矩阵，请检查数据点是否足够或分布不合理。")
+                print("使用 numpy.linalg.lstsq 仍然失败，可能数据点存在共线性或其他问题。")
+                if self.hand_eye_matrix is not None and np.isnan(self.hand_eye_matrix).any():
+                    print("DEBUG: hand_eye_matrix 包含 NaN 值。")
                 return False
 
         except Exception as e:
