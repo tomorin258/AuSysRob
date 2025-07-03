@@ -281,6 +281,17 @@ class HandEyeCalibrator:
         cv2.destroyAllWindows()
         return None
 
+    def transform_point_B_to_C(self, point_B):
+        """
+        输入：point_B = [x, y, z]
+        输出：point_C = [x, y, z]
+        """
+        if self.transform_matrix is None:
+            return None
+        point_B_homo = np.array([point_B[0], point_B[1], point_B[2], 1], dtype=np.float32)
+        point_C_homo = np.dot(self.transform_matrix, point_B_homo)
+        return point_C_homo[:3].tolist()
+
 if __name__ == "__main__":
     # 确保 PositionCalculator 已经正确初始化并完成了相机内参标定和平面校准
     # 如果没有，请在 PositionCalculate.py 中运行相关方法

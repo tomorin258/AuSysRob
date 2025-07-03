@@ -201,7 +201,7 @@ if __name__ == "__main__":
     robot.move_to_home()
 
     # 命令移动到特定位置
-    robot.move_to_angles(75, 90, 180, 90, 0) # 原始 TestBraccioForward 测试的参数
+    robot.move_to_angles(100, 90, 180, 90, 0) # 原始 TestBraccioForward 测试的参数
 
     # 在程序结束时关闭串口，确保资源释放
     robot.close_serial()
