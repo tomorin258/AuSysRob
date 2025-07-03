@@ -166,19 +166,27 @@ class HandEyeCalibrator:
                 # 这里我们假设从 B 到 C 是一个线性变换 (仿射变换的特例: 刚体变换)
                 # 我们可以使用 cv2.estimateAffine3D，它需要至少 4 个点对
                 if len(points_B) >= 4:
-                    retval, out = cv2.estimateAffine3D(points_B_np, points_C_np)
-                    if retval:
-                        # out 是一个 3x4 的仿射矩阵 [R|t]
-                        self.transform_matrix = out
-                        with open(self.calibration_file, 'wb') as f:
-                            pickle.dump(self.transform_matrix, f)
-                        print(f"手眼标定完成，转换矩阵已保存到 {self.calibration_file}")
-                        print("转换矩阵 (B->C):\n", self.transform_matrix)
-                    else:
-                        print("手眼标定失败: 无法计算仿射变换矩阵。")
+                    # 构建用于 points_B_np 的增广矩阵
+                    points_B_aug = np.hstack((points_B_np, np.ones((points_B_np.shape[0], 1)))) # N x 4
+                    
+                    # 使用最小二乘法求解变换矩阵
+                    # 我们希望求解 points_B_aug @ M_transpose = points_C_np
+                    # 其中 M_transpose 是 4x3 矩阵
+                    M_transpose, residuals, rank, s = np.linalg.lstsq(points_B_aug, points_C_np, rcond=None)
+                    
+                    self.transform_matrix = M_transpose.T # M 是 3x4 矩阵
+                    
+                    with open(self.calibration_file, 'wb') as f:
+                        pickle.dump(self.transform_matrix, f)
+                    print(f"手眼标定完成，转换矩阵已保存到 {self.calibration_file}")
+                    print("转换矩阵 (B->C):\n", self.transform_matrix)
                 else:
                     print("手眼标定需要至少 4 组点对来计算3D仿射变换。")
                     return
+            except np.linalg.LinAlgError as e:
+                print(f"手眼标定失败: 无法计算仿射变换矩阵，线性代数错误: {e}")
+                print("请检查数据点是否足够或分布不合理。")
+                return
             except Exception as e:
                 print(f"计算手眼变换矩阵时发生错误: {e}")
                 return

@@ -286,7 +286,7 @@ class HandEyeCalibration:
             # 或者 dst_points = src_points * R + t (当 R 为 3x3，t 为 1x3 时)
             # cv2.estimateAffine3D(src, dst) 返回一个 3x4 的仿射变换矩阵 `out`，形式为 [R|t]
             # 其中 R 是 3x3 旋转矩阵，t 是 3x1 平移向量
-            retval, self.hand_eye_matrix = cv2.estimateAffine3D(camera_points_B, robot_points_C)
+            retval, self.hand_eye_matrix, inliers = cv2.estimateAffine3D(camera_points_B, robot_points_C)
             
             if retval:
                 print("\n手眼标定完成！世界坐标系B到机械臂基座坐标系C的转换矩阵为 (3x4 仿射矩阵):")

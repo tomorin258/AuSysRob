@@ -60,8 +60,10 @@ class BraccioRobot:
             self.s = serial.Serial(com_port, baud_rate, timeout=timeout)
             time.sleep(3)  # 等待串口初始化完成
             print(f"串口 {com_port} 连接成功。")
+            print(f"DEBUG: Serial port {com_port} initialized with baud rate {baud_rate}, timeout {timeout}")
         except serial.SerialException as e:
             print(f"串口连接失败: {e}")
+            print(f"DEBUG: Failed to connect to serial port {com_port}: {e}")
             self.s = None
 
     def close_serial(self):
@@ -71,6 +73,7 @@ class BraccioRobot:
         if self.s and self.s.is_open:
             self.s.close()
             print("串口已关闭。")
+            print("DEBUG: Serial port closed.")
 
     def d2r(self, deg):
         """
@@ -162,6 +165,7 @@ class BraccioRobot:
         """
         if not self.s or not self.s.is_open:
             print("串口未连接或已关闭，无法发送命令。")
+            print("DEBUG: Serial port not open, cannot send command.")
             return
 
         # 计算末端执行器位置
@@ -173,15 +177,20 @@ class BraccioRobot:
         # 构造控制命令字符串
         command = (f"P{int(base)},{int(shoulder)},{int(elbow)},"
                    f"{int(wrist)},{int(twist)},{int(gripper_pos)},{int(move_time)}\n")
+        print(f"DEBUG: Sending command: '{command.strip()}'") # 打印发送的命令
 
         try:
             self.s.write(command.encode('ascii'))
+            # 尝试读取响应
             response = self.s.readline().decode().strip()
             print(f"机器人响应: {response}")
+            print(f"DEBUG: Received response: '{response}'")
         except serial.SerialException as e:
             print(f"发送命令失败: {e}")
+            print(f"DEBUG: Serial communication error when sending command: {e}")
         except Exception as e:
             print(f"发送命令时发生错误: {e}")
+            print(f"DEBUG: General error when sending command: {e}")
 
     def move_to_home(self):
         """
