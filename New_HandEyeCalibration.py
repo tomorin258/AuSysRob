@@ -190,7 +190,7 @@ class HandEyeCalibration:
         for idx, position in enumerate(calibration_positions):
             print(f"\n移动到位置 {idx + 1}: {position}")
             self.robot.move_to_angles(*position)
-            time.sleep(4)  # 等待机械臂稳定
+            time.sleep(2)  # 等待机械臂稳定
             
             # 自动采集一帧
             ret, frame = cap.read()
@@ -201,9 +201,14 @@ class HandEyeCalibration:
             detection_result = self.detect_red_marker(frame)
             if detection_result:
                 center_x, center_y, _ = detection_result
-                
+                print(f"检测到红点像素坐标: ({center_x}, {center_y})")
+                world_x, world_y = self.cam_calib.pixel_to_world_coordinates(center_x, center_y, world_z=830)
+                print(f"转换为世界坐标: ({world_x}, {world_y}, 0)")
+                # vis_img = self.visualize_detection(frame, detection_result)
+                # cv2.imshow("Red Marker Detection", vis_img)
+                # cv2.waitKey(5000)  # 显示5秒
                 # 将像素坐标转换为世界坐标系B下的点 (Z=0)
-                world_x, world_y = self.cam_calib.pixel_to_world_coordinates(center_x, center_y, world_z=0)
+                # world_x, world_y = self.cam_calib.pixel_to_world_coordinates(center_x, center_y, world_z=0)
                 
                 # 只取前五个关节角度用于正解
                 joint_angles = position[:5]
@@ -253,7 +258,7 @@ class HandEyeCalibration:
             robot_points_C = np.array([pose[:3, 3] for pose in self.robot_poses], dtype=np.float64)
 
             # self.camera_observations 应该已经存储了世界坐标系B下的3D点 [world_x, world_y, 0.0]
-            # 因此，camera_observations_np 已经是 N x 3 的形式
+            # 因此，camera_points_B 已经是 N x 3 的形式
             camera_points_B = camera_observations_np
 
             # 调试信息：打印数组形状和数据类型
@@ -400,6 +405,14 @@ class HandEyeCalibration:
         base_point = self.hand_eye_matrix @ camera_point
         
         return base_point[:3].flatten()
+    
+    def get_robot(self):
+        """
+        获取机械臂控制器实例
+        返回:
+            BraccioRobot: 机械臂控制器实例
+        """
+        return self.robot
 
 
 def main():
@@ -431,7 +444,7 @@ def main():
         print(f"加载相机标定参数时发生错误: {e}")
         exit()
 
-    com_port = input("请输入机械臂串口号 (默认: COM6): ").strip() or "COM6"
+    com_port = input("请输入机械臂串口号 (默认: COM8): ").strip() or "COM8"
     calibrator = HandEyeCalibration(camera_index=0, com_port=com_port, cam_calib_instance=cam_calib) # 传入 cam_calib_instance
     
     # 步骤1: 收集标定数据

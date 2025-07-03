@@ -54,7 +54,7 @@ def main():
     handeye.load_calibration_results(handeye_file)
 
     # 初始化机械臂
-    robot = BraccioRobot(com_port='COM6', baud_rate=115200, timeout=5)
+    robot = HandEyeCalibration.get_robot(handeye)
     ik_solver = BraccioInverseKinematics()
 
     # 机械臂初始位置
@@ -79,7 +79,7 @@ def main():
             print("检测到积木，开始自动抓取流程...")
 
             # 1. 像素坐标->世界坐标B
-            world_x, world_y = cam_calib.pixel_to_world_coordinates(lego_pixel[0], lego_pixel[1], world_z=0)
+            world_x, world_y = cam_calib.pixel_to_world_coordinates(lego_pixel[0], lego_pixel[1], world_z=830)
             # 2. 世界坐标B->机械臂基座坐标C
             base_xyz = handeye.transform_coordinates(world_x, world_y, camera_z=0)
             # 3. 固定Z高度
@@ -92,28 +92,32 @@ def main():
             # 4. 逆解
             joint_angles_above = ik_solver.calculate_joint_angles(base_xyz_above[0], base_xyz_above[1], base_xyz_above[2])
             joint_angles_grab = ik_solver.calculate_joint_angles(base_xyz[0], base_xyz[1], base_xyz[2])
+            base_above, shoulder_above, elbow_above, wrist_above, twist_above = joint_angles_above
+            base_grab, shoulder_grab, elbow_grab, wrist_grab, twist_grab = joint_angles_grab
+            base_above += 8
+            base_grab += 8
             if not joint_angles_above or not joint_angles_grab:
                 print("目标点不可达，跳过")
                 continue
 
             # 5. 抓取动作流程
             # 5.1 抬高到上方
-            robot.move_to_angles(*[int(a) for a in joint_angles_above], gripper_pos=100, move_time=50)  # 夹爪张开
+            robot.move_to_angles(base_above, shoulder_above, elbow_above, wrist_above, twist_above, gripper_pos=0, move_time=50)  # 夹爪张开
             time.sleep(1.2)
             # 5.2 下到抓取高度
-            robot.move_to_angles(*[int(a) for a in joint_angles_grab], gripper_pos=100, move_time=50)
+            robot.move_to_angles(base_grab, shoulder_grab, elbow_grab, wrist_grab, twist_grab, gripper_pos=0, move_time=50)
             time.sleep(1.2)
             # 5.3 合上夹爪
-            robot.move_to_angles(*[int(a) for a in joint_angles_grab], gripper_pos=30, move_time=50)
+            robot.move_to_angles(base_grab, shoulder_grab, elbow_grab, wrist_grab, twist_grab, gripper_pos=90, move_time=50)
             time.sleep(1.2)
             # 5.4 再抬高
-            robot.move_to_angles(*[int(a) for a in joint_angles_above], gripper_pos=30, move_time=50)
+            robot.move_to_angles(base_above, shoulder_above, elbow_above, wrist_above, twist_above, gripper_pos=90, move_time=50)
             time.sleep(1.2)
             # 5.5 回到初始位置
-            robot.move_to_angles(*home_angles, gripper_pos=30, move_time=50)
+            robot.move_to_angles(*home_angles, gripper_pos=90, move_time=50)
             time.sleep(1.2)
             # 5.6 松开夹爪
-            robot.move_to_angles(*home_angles, gripper_pos=100, move_time=50)
+            robot.move_to_angles(*home_angles, gripper_pos=0, move_time=50)
             time.sleep(1.2)
 
             print("本次抓取完成，等待下一个目标...")
