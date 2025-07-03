@@ -6,6 +6,8 @@ from datetime import datetime
 import time
 from ForwardController import BraccioRobot
 from InverseCalculate import BraccioInverseKinematics
+from New_CameraCalibration import CameraCalibration
+import pickle
 
 
 class HandEyeCalibration:
@@ -14,23 +16,25 @@ class HandEyeCalibration:
     用于将世界坐标系B转换到机械臂基座坐标系C
     """
     
-    def __init__(self, camera_index=0, com_port='COM6'):
+    def __init__(self, camera_index=0, com_port='COM6', cam_calib_instance=None):
         """
         初始化手眼标定
         
         参数:
             camera_index (int): 摄像头索引
             com_port (str): 机械臂串口号
+            cam_calib_instance (CameraCalibration): 已初始化并加载相机参数的 CameraCalibration 实例
         """
         self.camera_index = camera_index
+        self.cam_calib = cam_calib_instance
         
         # 初始化机械臂控制器
         self.robot = BraccioRobot(com_port=com_port)
         self.ik_solver = BraccioInverseKinematics()
         
         # 标定数据存储
-        self.robot_poses = []      # 机械臂末端位姿 (4x4齐次变换矩阵)
-        self.camera_observations = []  # 相机观测到的gripper位置
+        self.robot_poses = []      # 机械臂末端位姿 (4x4齐次变换矩阵，或其平移向量)
+        self.camera_observations = []  # 相机观测到的在世界坐标系B下的点 (x, y, 0)
         
         # 标定结果
         self.hand_eye_matrix = None  # 手眼标定矩阵
@@ -144,10 +148,14 @@ class HandEyeCalibration:
         """
         自动收集手眼标定数据，使用预设的8个机械臂位置
         """
+        if self.cam_calib is None or not self.cam_calib.camera_matrix_loaded:
+            print("错误: 未提供有效的 CameraCalibration 实例或相机参数未加载。无法进行像素到世界坐标的转换。")
+            return False
+
         print(f"\n=== 手眼标定数据收集 ===")
         print(f"机械臂将自动移动到8个预设位置，每个位置记录：")
         print(f"1. 机械臂末端执行器的位姿")
-        print(f"2. 相机观测到的红色标记位置")
+        print(f"2. 相机观测到的红色标记在世界坐标系B下的位置")
         print(f"\n操作说明:")
         print(f"- 请确保红色标记在相机视野内")
         print(f"- 每个位置自动采集一次，无需手动按键")
@@ -185,14 +193,18 @@ class HandEyeCalibration:
             detection_result = self.detect_red_marker(frame)
             if detection_result:
                 center_x, center_y, _ = detection_result
+                
+                # 将像素坐标转换为世界坐标系B下的点 (Z=0)
+                world_x, world_y = self.cam_calib.pixel_to_world_coordinates(center_x, center_y, world_z=0)
+                
                 # 只取前五个关节角度用于正解
                 joint_angles = position[:5]
                 robot_pose = self.get_robot_end_effector_pose(joint_angles)
                 self.robot_poses.append(robot_pose)
-                self.camera_observations.append([center_x, center_y])
+                self.camera_observations.append([world_x, world_y, 0.0])
                 image_filename = os.path.join(self.save_dir, f"calibration_pose_{collected_count:03d}.jpg")
                 cv2.imwrite(image_filename, frame)
-                print(f"已记录数据点 {collected_count+1}: 像素坐标({center_x}, {center_y})，保存图像: {image_filename}")
+                print(f"已记录数据点 {collected_count+1}: 世界坐标B({world_x:.2f}, {world_y:.2f}, 0.0) mm，保存图像: {image_filename}")
                 collected_count += 1
             else:
                 print(f"未检测到红色标记，跳过该点")
@@ -209,77 +221,76 @@ class HandEyeCalibration:
     
     def perform_hand_eye_calibration(self):
         """
-        执行手眼标定计算
+        执行手眼标定。
+        返回:
+            bool: 如果标定成功则返回 True，否则返回 False。
         """
-        if len(self.robot_poses) < 4:
-            print("错误: 标定数据不足，至少需要4组数据")
+        print(f"DEBUG: Starting perform_hand_eye_calibration.")
+        print(f"DEBUG: len(self.robot_poses) before np.array: {len(self.robot_poses)}")
+        print(f"DEBUG: len(self.camera_observations) before np.array: {len(self.camera_observations)}")
+
+        # 将列表转换为Numpy数组
+        robot_poses_np = np.array(self.robot_poses, dtype=np.float64)
+        camera_observations_np = np.array(self.camera_observations, dtype=np.float64)
+
+        # 确保收集到的数据点足够
+        # cv2.estimateAffine3D 需要至少 4 组点对
+        if len(self.robot_poses) < 4 or len(self.camera_observations) < 4:
+            print("错误: 手眼标定需要至少4组对应点。")
             return False
-        
-        print(f"\n=== 开始手眼标定计算 ===")
-        print(f"使用 {len(self.robot_poses)} 组数据进行标定...")
-        
+
         try:
-            # 准备数据格式
-            R_gripper2base = []  # 机械臂末端到基座的旋转矩阵
-            t_gripper2base = []  # 机械臂末端到基座的平移向量
+            # 从 self.robot_poses (4x4齐次矩阵) 中提取末端执行器的 XYZ 位置
+            # 这是机械臂基座坐标系C下的点。`pose[:3, 3]` 提取的是 [x, y, z]
+            robot_points_C = np.array([pose[:3, 3] for pose in self.robot_poses], dtype=np.float64)
+
+            # self.camera_observations 应该已经存储了世界坐标系B下的3D点 [world_x, world_y, 0.0]
+            # 因此，camera_observations_np 已经是 N x 3 的形式
+            camera_points_B = camera_observations_np
+
+            # 调试信息：打印数组形状和数据类型
+            print(f"robot_points_C shape: {robot_points_C.shape}, dtype: {robot_points_C.dtype}")
+            print(f"camera_points_B shape: {camera_points_B.shape}, dtype: {camera_points_B.dtype}")
+
+            # 打印实际内容的前几行（如果存在）
+            if robot_points_C.shape[0] > 0:
+                print(f"DEBUG: First {{min(3, robot_points_C.shape[0])}} robot_points_C:\n{{robot_points_C[:min(3, robot_points_C.shape[0])]}}")
+            if camera_points_B.shape[0] > 0:
+                print(f"DEBUG: First {{min(3, camera_points_B.shape[0])}} camera_points_B:\n{{camera_points_B[:min(3, camera_points_B.shape[0])]}}")
+
+            # 再次检查点集是否为空
+            if robot_points_C.shape[0] == 0 or camera_points_B.shape[0] == 0:
+                print("错误: 输入点集为空，无法执行手眼标定。")
+                return False
             
-            # 由于我们只有2D相机观测，创建虚拟的相机位姿变化
-            R_target2cam = []    # 目标到相机的旋转矩阵
-            t_target2cam = []    # 目标到相机的平移向量
+            # 检查点数是否一致
+            if robot_points_C.shape[0] != camera_points_B.shape[0]:
+                print(f"错误: 机械臂点数 ({robot_points_C.shape[0]}) 与相机观测点数 ({camera_points_B.shape[0]}) 不一致。")
+                return False
+
+            # 检查点维度是否正确 (应该是 N x 3)
+            if robot_points_C.shape[1] != 3 or camera_points_B.shape[1] != 3:
+                print("错误: 输入点集维度不正确，应为 N x 3。")
+                return False
+
+            # 使用 estimateAffine3D 计算仿射变换矩阵
+            # 它找到一个 3x4 的矩阵 [R|t]，使得 src_points * [R^T; t^T] = dst_points
+            # 或者 dst_points = src_points * R + t (当 R 为 3x3，t 为 1x3 时)
+            # cv2.estimateAffine3D(src, dst) 返回一个 3x4 的仿射变换矩阵 `out`，形式为 [R|t]
+            # 其中 R 是 3x3 旋转矩阵，t 是 3x1 平移向量
+            retval, self.hand_eye_matrix = cv2.estimateAffine3D(camera_points_B, robot_points_C)
             
-            # 处理机械臂位姿数据
-            for pose in self.robot_poses:
-                # 提取旋转矩阵和平移向量
-                R = pose[:3, :3]
-                t = pose[:3, 3].reshape(-1, 1)
-                
-                R_gripper2base.append(R)
-                t_gripper2base.append(t)
-            
-            # 处理相机观测数据
-            # 由于相机观测是2D的，我们需要创建相对变换
-            base_observation = self.camera_observations[0]
-            
-            for obs in self.camera_observations:
-                # 计算相对于第一个观测的像素位置变化
-                dx = obs[0] - base_observation[0]
-                dy = obs[1] - base_observation[1]
-                
-                # 创建一个简化的平移变换（假设没有旋转）
-                R_cam = np.eye(3, dtype=np.float64)
-                t_cam = np.array([[dx], [dy], [0]], dtype=np.float64)
-                
-                R_target2cam.append(R_cam)
-                t_target2cam.append(t_cam)
-            
-            # 使用OpenCV的手眼标定函数
-            # 注意：这里我们使用相对变换而不是绝对位姿
-            R_cam2gripper, t_cam2gripper = cv2.calibrateHandEye(
-                R_gripper2base[:-1], t_gripper2base[:-1],  # 相对的机械臂位姿变化
-                R_target2cam[:-1], t_target2cam[:-1],      # 相对的相机观测变化
-                method=cv2.CALIB_HAND_EYE_TSAI
-            )
-            
-            # 构建完整的手眼标定矩阵
-            self.hand_eye_matrix = np.eye(4)
-            self.hand_eye_matrix[:3, :3] = R_cam2gripper
-            self.hand_eye_matrix[:3, 3] = t_cam2gripper.flatten()
-            
-            print("手眼标定成功!")
-            print("手眼标定矩阵 (相机到末端执行器):")
-            print(self.hand_eye_matrix)
-            
-            # 保存标定结果
-            self.save_calibration_results()
-            return True
-            
+            if retval:
+                print("\n手眼标定完成！世界坐标系B到机械臂基座坐标系C的转换矩阵为 (3x4 仿射矩阵):")
+                print(self.hand_eye_matrix)
+                self.save_calibration_results()
+                return True
+            else:
+                print("错误: 无法计算手眼标定仿射变换矩阵，请检查数据点是否足够或分布不合理。")
+                return False
+
         except Exception as e:
-            print(f"手眼标定失败: {e}")
-            print("这可能是由于数据不足或位姿变化太小导致的")
-            print("建议:")
-            print("1. 增加更多标定位置")
-            print("2. 确保机械臂在不同位置间有足够大的移动")
-            print("3. 检查红色标记检测的准确性")
+            print(f"手眼标定计算过程中发生错误: {e}")
             return False
     
     def save_calibration_results(self):

@@ -50,7 +50,7 @@ def main():
     cam_calib = CameraCalibration()
     cam_calib.load_calibration_results(cam_calib_file)
     # 加载手眼标定
-    handeye = HandEyeCalibration()
+    handeye = HandEyeCalibration(cam_calib_instance=cam_calib)
     handeye.load_calibration_results(handeye_file)
 
     # 初始化机械臂
