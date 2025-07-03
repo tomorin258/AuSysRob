@@ -248,8 +248,19 @@ class CameraCalibration:
             with open(calibration_file, 'r') as f:
                 data = json.load(f)
                 self.camera_matrix = np.array(data['camera_matrix'])
-                self.distortion_coeffs = np.array(data['distortion_coeffs']).reshape(-1, 1)
-                self.calibration_error = data['reprojection_error']
+
+                # 尝试加载新的畸变系数键名，如果失败则回退到旧的键名
+                try:
+                    self.distortion_coeffs = np.array(data['distortion_coeffs']).reshape(-1, 1)
+                except KeyError:
+                    self.distortion_coeffs = np.array(data['distortion_coefficients']).reshape(-1, 1)
+
+                # 尝试加载新的重投影误差键名，如果失败则回退到旧的键名
+                try:
+                    self.calibration_error = data['reprojection_error']
+                except KeyError:
+                    self.calibration_error = data['calibration_error']
+                    
                 self.camera_matrix_loaded = True # 加载成功，设置为True
                 print(f"成功加载相机标定参数: {calibration_file}")
                 return True
