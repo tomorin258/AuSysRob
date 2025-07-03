@@ -5,8 +5,8 @@ import time
 # 确保项目根目录在 Python 路径中，以便正确导入模块
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from PositionCalculate import PositionCalculator
-from HandEyeCalibration import HandEyeCalibrator
+from Previous_Codes.PositionCalculate import PositionCalculator
+from Previous_Codes.HandEyeCalibration import HandEyeCalibrator
 from InverseCalculate import BraccioInverseKinematics
 from ForwardController import BraccioRobot
 
