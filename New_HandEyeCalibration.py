@@ -9,6 +9,14 @@ from InverseCalculate import BraccioInverseKinematics
 from New_CameraCalibration import CameraCalibration
 import pickle
 
+def load_latest_file(directory, prefix, ext):
+    """加载指定目录下最新的标定参数文件"""
+    files = [f for f in os.listdir(directory) if f.startswith(prefix) and f.endswith(ext)]
+    if not files:
+        raise FileNotFoundError(f"{directory} 下未找到 {prefix} 开头的 {ext} 文件")
+    files.sort()
+    return os.path.join(directory, files[-1])
+
 
 class HandEyeCalibration:
     """
@@ -376,11 +384,26 @@ def main():
     print("2. 机械臂已正确连接并可以通信")
     print("3. 相机可以清晰看到机械臂工作区域")
     
-    # 根据实际情况修改串口号
+    # 在独立运行此文件时，也需要加载相机标定结果
+    calibration_data_dir = "calibration_data"
+    camera_calib_prefix = "camera_calibration"
+    camera_calib_ext = ".json"
+
+    # 尝试加载最新的相机标定文件
+    try:
+        latest_cam_calib_file = load_latest_file(calibration_data_dir, camera_calib_prefix, camera_calib_ext)
+        cam_calib = CameraCalibration()
+        cam_calib.load_calibration_results(latest_cam_calib_file)
+        print(f"成功加载相机标定参数: {latest_cam_calib_file}")
+    except FileNotFoundError:
+        print("错误: 未找到相机标定文件。请先运行 New_CameraCalibration.py 进行相机标定。")
+        exit() # 退出程序，因为没有相机标定数据就无法进行手眼标定
+    except Exception as e:
+        print(f"加载相机标定参数时发生错误: {e}")
+        exit()
+
     com_port = input("请输入机械臂串口号 (默认: COM6): ").strip() or "COM6"
-    
-    # 创建手眼标定对象
-    calibrator = HandEyeCalibration(camera_index=0, com_port=com_port)
+    calibrator = HandEyeCalibration(camera_index=0, com_port=com_port, cam_calib_instance=cam_calib) # 传入 cam_calib_instance
     
     # 步骤1: 收集标定数据
     print("\n步骤1: 收集手眼标定数据")
