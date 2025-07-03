@@ -204,13 +204,13 @@ class BraccioRobot:
 # 以下是如何使用这个类
 if __name__ == "__main__":
     # 请替换 'COM6' 为你的机械臂连接的实际串口号，例如 '/dev/ttyUSB0' (Linux) 或 'COMx' (Windows)
-    robot = BraccioRobot(com_port='COM6', baud_rate=115200, timeout=5)
+    robot = BraccioRobot(com_port='COM8', baud_rate=115200, timeout=5)
 
     # 将机器人移动到起始位置
     robot.move_to_home()
 
     # 命令移动到特定位置
-    robot.move_to_angles(0, 90, 0, 90, 0) # 原始 TestBraccioForward 测试的参数
+    robot.move_to_angles(100, 90, 180, 90, 0) # 原始 TestBraccioForward 测试的参数
 
     # 在程序结束时关闭串口，确保资源释放
     robot.close_serial()

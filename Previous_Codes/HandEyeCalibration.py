@@ -68,26 +68,38 @@ class HandEyeCalibrator:
                 new_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(position_calculator.camera_matrix, position_calculator.dist_coeffs, (w, h), 1, (w, h))
                 undistorted_frame = cv2.undistort(frame, position_calculator.camera_matrix, position_calculator.dist_coeffs, None, new_camera_matrix)
 
-                # YOLO 目标检测
-                results = position_calculator.model(undistorted_frame, verbose=False)
+                # 红色色块检测（替换YOLO部分）
+                hsv = cv2.cvtColor(undistorted_frame, cv2.COLOR_BGR2HSV)
+                # 红色有两个区间
+                lower_red1 = np.array([0, 100, 100])
+                upper_red1 = np.array([10, 255, 255])
+                lower_red2 = np.array([160, 100, 100])
+                upper_red2 = np.array([179, 255, 255])
+                mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
+                mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+                mask = cv2.bitwise_or(mask1, mask2)
+                # 形态学操作去噪
+                kernel = np.ones((5, 5), np.uint8)
+                mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+                mask = cv2.morphologyEx(mask, cv2.MORPH_DILATE, kernel)
+                # 找轮廓
+                contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 current_world_B_coords = None
-
-                for r in results:
-                    boxes = r.boxes
-                    if len(boxes) > 0:
-                        # 只取第一个检测到的物体，实际应用中可能需要更复杂的逻辑来选择目标
-                        box = boxes[0]
-                        x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-                        center_x_pixel = (x1 + x2) / 2
-                        center_y_pixel = (y1 + y2) / 2
-
-                        pixel_coords = np.array([[[center_x_pixel, center_y_pixel]]], dtype=np.float32)
-                        world_coords_2d = cv2.perspectiveTransform(pixel_coords, position_calculator.homography_matrix)[0][0]
-                        current_world_B_coords = (world_coords_2d[0], world_coords_2d[1])
-
-                        label = f"Detected: ({current_world_B_coords[0]:.1f}mm, {current_world_B_coords[1]:.1f}mm)"
-                        cv2.rectangle(undistorted_frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-                        cv2.putText(undistorted_frame, label, (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                if contours:
+                    # 取最大轮廓
+                    largest_contour = max(contours, key=cv2.contourArea)
+                    if cv2.contourArea(largest_contour) > 100:  # 面积阈值可调整
+                        M = cv2.moments(largest_contour)
+                        if M["m00"] != 0:
+                            cX = int(M["m10"] / M["m00"])
+                            cY = int(M["m01"] / M["m00"])
+                            pixel_coords = np.array([[[cX, cY]]], dtype=np.float32)
+                            world_coords_2d = cv2.perspectiveTransform(pixel_coords, position_calculator.homography_matrix)[0][0]
+                            current_world_B_coords = (world_coords_2d[0], world_coords_2d[1])
+                            label = f"Red: ({current_world_B_coords[0]:.1f}mm, {current_world_B_coords[1]:.1f}mm)"
+                            cv2.drawContours(undistorted_frame, [largest_contour], -1, (0, 255, 0), 2)
+                            cv2.circle(undistorted_frame, (cX, cY), 5, (0, 255, 255), -1)
+                            cv2.putText(undistorted_frame, label, (cX, cY - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
                 cv2.putText(undistorted_frame, "Press 's' to Save Point, 'q' to Quit", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
                 cv2.imshow('手眼标定数据收集', undistorted_frame)
@@ -166,6 +178,7 @@ class HandEyeCalibrator:
                 # 这里我们假设从 B 到 C 是一个线性变换 (仿射变换的特例: 刚体变换)
                 # 我们可以使用 cv2.estimateAffine3D，它需要至少 4 个点对
                 if len(points_B) >= 4:
+
                     # 构建用于 points_B_np 的增广矩阵
                     points_B_aug = np.hstack((points_B_np, np.ones((points_B_np.shape[0], 1)))) # N x 4
                     
@@ -180,6 +193,7 @@ class HandEyeCalibrator:
                         pickle.dump(self.transform_matrix, f)
                     print(f"手眼标定完成，转换矩阵已保存到 {self.calibration_file}")
                     print("转换矩阵 (B->C):\n", self.transform_matrix)
+
                 else:
                     print("手眼标定需要至少 4 组点对来计算3D仿射变换。")
                     return
@@ -223,7 +237,8 @@ class HandEyeCalibrator:
             print(f"错误: 无法打开摄像头 {position_calculator.camera_id}。")
             return None
 
-        print("\n=== 开始实时获取方块坐标 (机械臂基座坐标系C) ===\n按 'q' 退出。")
+        print("\n=== 实时获取方块坐标 (机械臂基座坐标系C) ===\n检测到积木后自动返回。")
+        robot_base_coords = None
         while True:
             ret, frame = cap.read()
             if not ret:
@@ -237,52 +252,55 @@ class HandEyeCalibrator:
 
             # 2. YOLO 目标检测
             results = position_calculator.model(undistorted_frame, verbose=False)
-            robot_base_coords = None
 
             for r in results:
                 boxes = r.boxes
-                if len(boxes) > 0:
-                    box = boxes[0] # 假设只关注第一个检测到的物体
+                for box in boxes:
+                    conf = box.conf[0].cpu().numpy()
+                    cls = int(box.cls[0].cpu().numpy())
+                    print(f"[HandEyeCalibration] 检测到类别: {cls}，置信度: {conf:.2f}")
+                    if cls != 9 or conf < 0.15:
+                        continue
+                    # 以下为原有处理逻辑
                     x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
                     center_x_pixel = (x1 + x2) / 2
                     center_y_pixel = (y1 + y2) / 2
-
-                    # 将像素坐标转换为世界坐标系B下的物理坐标 (X, Y in mm)
                     pixel_coords = np.array([[[center_x_pixel, center_y_pixel]]], dtype=np.float32)
                     world_coords_2d_B = cv2.perspectiveTransform(pixel_coords, position_calculator.homography_matrix)[0][0]
-
-                    # 将坐标系B的2D点扩展为3D点 (x_B, y_B, 0)，然后应用变换
-                    # 注意：这里的 Z=0 是针对 B 坐标系平面而言的，实际的 Z 轴高度由手眼标定和固定高度决定
-                    point_B_3d = np.array([world_coords_2d_B[0], world_coords_2d_B[1], 0, 1], dtype=np.float32) # 添加齐次坐标1
-
-                    # 应用手眼转换矩阵 (B->C)
-                    # transform_matrix 是 3x4 的矩阵 [R|t]
-                    # 所以 point_B_3d 需要是 4x1 的向量 (x, y, z, 1).T
+                    point_B_3d = np.array([world_coords_2d_B[0], world_coords_2d_B[1], 0, 1], dtype=np.float32)
                     transformed_point_C = np.dot(self.transform_matrix, point_B_3d)
-
-                    # 得到的 transformed_point_C 是 (x_C, y_C, z_C)
-                    # 现在我们替换 Z_C 为固定的乐高积木高度
                     robot_base_x = transformed_point_C[0]
                     robot_base_y = transformed_point_C[1]
-                    robot_base_z = self.lego_height_mm # 使用固定的乐高积木高度
-
+                    robot_base_z = self.lego_height_mm
                     robot_base_coords = (robot_base_x, robot_base_y, robot_base_z)
-
-                    # 绘制检测框和世界坐标
                     label = f"Robot Coords: ({robot_base_x:.1f}, {robot_base_y:.1f}, {robot_base_z:.1f}) mm"
                     cv2.rectangle(undistorted_frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
                     cv2.putText(undistorted_frame, label, (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
                     print(f"检测到物体中心点 (机械臂基座坐标系C): ({robot_base_x:.1f}, {robot_base_y:.1f}, {robot_base_z:.1f}) mm")
+                    cv2.imshow('实时方块坐标 (机械臂基座坐标系C)', undistorted_frame)
+                    cv2.waitKey(500)
+                    cap.release()
+                    cv2.destroyAllWindows()
+                    return robot_base_coords
 
             cv2.imshow('实时方块坐标 (机械臂基座坐标系C)', undistorted_frame)
-
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
         cap.release()
         cv2.destroyAllWindows()
-        return robot_base_coords
+        return None
+
+    def transform_point_B_to_C(self, point_B):
+        """
+        输入：point_B = [x, y, z]
+        输出：point_C = [x, y, z]
+        """
+        if self.transform_matrix is None:
+            return None
+        point_B_homo = np.array([point_B[0], point_B[1], point_B[2], 1], dtype=np.float32)
+        point_C_homo = np.dot(self.transform_matrix, point_B_homo)
+        return point_C_homo[:3].tolist()
 
 if __name__ == "__main__":
     # 确保 PositionCalculator 已经正确初始化并完成了相机内参标定和平面校准
@@ -295,17 +313,17 @@ if __name__ == "__main__":
     #    在 PositionCalculate 能够检测到该点时，在弹出的窗口中按 's' 保存，然后输入机械臂末端在基座坐标系C下的实际XYZ坐标。
     #    重复此过程 num_points 次 (建议至少5次，并分布在工作空间中)。
     #    运行这行代码来启动数据收集和标定过程:
-    # calibrator = HandEyeCalibrator(lego_height_mm=20) # 乐高积木的高度，单位毫米
-    # calibrator.collect_and_calibrate(pos_calculator, num_points=5)
+    calibrator = HandEyeCalibrator(lego_height_mm=20) # 乐高积木的高度，单位毫米
+    calibrator.collect_and_calibrate(pos_calculator, num_points=4)
 
     # 2. **获取方块坐标 (日常使用)**：完成手眼标定并生成 'hand_eye_calibration.pkl' 文件后，
     #    您可以多次运行此方法来实时检测并计算乐高积木在机械臂基座坐标系C下的三维坐标。
-    calibrator = HandEyeCalibrator(lego_height_mm=20) # 请确保这里的乐高积木高度与您的实际测量值一致
-    final_block_coords = calibrator.get_block_coordinate_in_robot_base(pos_calculator)
+    # calibrator = HandEyeCalibrator(lego_height_mm=20) # 请确保这里的乐高积木高度与您的实际测量值一致
+    # final_block_coords = calibrator.get_block_coordinate_in_robot_base(pos_calculator)
 
-    if final_block_coords:
-        print(f"\n最终检测到的乐高积木坐标 (机械臂基座坐标系C): {final_block_coords[0]:.2f}, {final_block_coords[1]:.2f}, {final_block_coords[2]:.2f} mm")
-    else:
-        print("未能获取乐高积木坐标。")
+    # if final_block_coords:
+    #     print(f"\n最终检测到的乐高积木坐标 (机械臂基座坐标系C): {final_block_coords[0]:.2f}, {final_block_coords[1]:.2f}, {final_block_coords[2]:.2f} mm")
+    # else:
+    #     print("未能获取乐高积木坐标。")
 
-    print("\n程序结束。") 
+    print("\n程序结束。")
